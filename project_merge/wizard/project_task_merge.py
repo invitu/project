@@ -11,6 +11,16 @@ class ProjectTaskMerge(models.TransientModel):
     dst_task_name = fields.Char(string="New task name")
     dst_project_id = fields.Many2one("project.project", string="Destination Project")
     dst_task_id = fields.Many2one("project.task", string="Merge into an existing task")
+    possible_project_ids = fields.Many2many(
+        "project.project",
+        compute="_compute_possible_project_ids",
+        string="Projects of the tasks to merge",
+    )
+
+    @api.depends("task_ids")
+    def _compute_possible_project_ids(self):
+        for wizard in self:
+            wizard.possible_project_ids = wizard.task_ids.mapped("project_id")
 
     @api.model
     def default_get(self, fields):
@@ -19,12 +29,13 @@ class ProjectTaskMerge(models.TransientModel):
             self.env.context.get("active_ids", [])
         )
         if selected_task_ids:
+            oldest_task = selected_task_ids.sorted("create_date")[0]
             res.update(
                 {
                     "task_ids": [(6, 0, selected_task_ids.ids)],
                     "user_ids": [(6, 0, selected_task_ids.mapped("user_ids").ids)],
-                    "dst_project_id": selected_task_ids[0].project_id.id,
-                    "dst_task_id": selected_task_ids[0].id,
+                    "dst_project_id": oldest_task.project_id.id,
+                    "dst_task_id": oldest_task.id,
                 }
             )
         return res

@@ -334,3 +334,36 @@ class TestProjectMerge(TestProjectCommon):
             len(self.task_merge_2.dst_task_id._get_all_subtasks()),
             "Should have 18 subtasks",
         )
+
+    def test_default_get_picks_oldest_task_across_projects(self):
+        """When selected tasks belong to different projects, the default
+        destination task/project must be the oldest one among them, and the
+        projects proposed to the user must be restricted to the projects of
+        the selected tasks."""
+        task_pigs = self.env["project.task"].create(
+            {"name": "Task Pigs", "project_id": self.project_pigs.id}
+        )
+        task_goats = self.env["project.task"].create(
+            {"name": "Task Goats", "project_id": self.project_goats.id}
+        )
+        # force a deterministic create_date gap, as both tasks may otherwise
+        # be created within the same second during the test
+        self.env.cr.execute(
+            "UPDATE project_task SET create_date = create_date - interval '1 day' "
+            "WHERE id = %s",
+            (task_pigs.id,),
+        )
+        task_pigs.invalidate_recordset(["create_date"])
+
+        Wizard = self.env["project.task.merge"].with_context(
+            active_ids=[task_goats.id, task_pigs.id]
+        )
+        default_vals = Wizard.default_get(["task_ids", "dst_project_id", "dst_task_id"])
+        self.assertEqual(default_vals.get("dst_task_id"), task_pigs.id)
+        self.assertEqual(default_vals.get("dst_project_id"), self.project_pigs.id)
+
+        wizard = Wizard.create({})
+        self.assertEqual(
+            set(wizard.possible_project_ids.ids),
+            {self.project_pigs.id, self.project_goats.id},
+        )
